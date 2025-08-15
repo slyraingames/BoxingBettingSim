@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Boxing Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        canvas {
+            background-color: #000;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            /* --- FIX FOR PIXEL ART BLUR --- */
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none; /* Allow clicks to pass through to canvas if needed */
+        }
+        .clickable {
+            pointer-events: auto; /* Re-enable pointer events for buttons */
+        }
+        .hud-element {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        .health-bar-container {
+            border: 2px solid #000;
+            background-color: #444;
+            padding: 2px;
+        }
+        .health-bar {
+            background-color: #ff0000; /* Changed to red */
+            height: 100%;
+            transition: width 0.2s linear;
+        }
+        .health-bar.low {
+            background-color: #ffcc00;
+        }
+        .health-bar.critical {
+            background-color: #b22222;
+        }
+        .menu-button {
+            background-color: #4a4a4a;
+            border: 4px outset #888;
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .menu-button:hover {
+            background-color: #6a6a6a;
+        }
+        .menu-button:active {
+            border-style: inset;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen m-0 p-0 flex items-center justify-center">
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Main Menu UI -->
+    <div id="mainMenu" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black bg-opacity-70 text-center">
+        <h1 class="text-4xl md:text-6xl mb-4 hud-element">Virtual Boxing Simulator</h1>
+        <p class="text-2xl text-red-500 mb-10 hud-element">-Bet against Friends-</p>
+        <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-8">
+            <button id="startButton" class="menu-button clickable">Start</button>
+            <button id="quitButton" class="menu-button clickable">Quit</button>
+        </div>
+        <p class="mt-12 text-lg hud-element">[SlyRain Games]</p>
+    </div>
+
+    <!-- Versus Screen UI -->
+    <div id="versusScreen" class="absolute inset-0 z-10 hidden flex-col items-center justify-center bg-black bg-opacity-70 text-center cursor-pointer">
+        <h2 id="versusText" class="text-4xl md:text-6xl mb-8 hud-element">Fighter 1 vs Fighter 2</h2>
+        <p class="text-xl md:text-2xl hud-element animate-pulse">Click to Start</p>
+    </div>
+
+    <!-- In-Game HUD UI -->
+    <div id="inGameHud" class="ui-container p-4 md:p-8 hidden">
+        <!-- Timer -->
+        <div class="absolute top-4 left-1/2 -translate-x-1/2">
+            <p id="timer" class="text-5xl md:text-6xl hud-element">2:00</p>
+        </div>
+
+        <!-- Fighter 1 Info (Left) -->
+        <div class="absolute bottom-4 left-4 md:left-8 w-2/5 max-w-md">
+            <p id="fighter1Name" class="text-lg md:text-2xl mb-1 hud-element">FIGHTER 1</p>
+            <p id="fighter1Record" class="text-sm md:text-base mb-2 hud-element">(0-0)</p>
+            <div class="health-bar-container h-6 md:h-8">
+                <div id="fighter1Health" class="health-bar"></div>
+            </div>
+            <p id="fighter1Punches" class="text-sm md:text-base mt-2 hud-element">Punches: 0</p>
+        </div>
+
+        <!-- Fighter 2 Info (Right) -->
+        <div class="absolute bottom-4 right-4 md:right-8 w-2/5 max-w-md">
+            <p id="fighter2Name" class="text-lg md:text-2xl mb-1 hud-element text-right">FIGHTER 2</p>
+            <p id="fighter2Record" class="text-sm md:text-base mb-2 hud-element text-right">(0-0)</p>
+            <div class="health-bar-container h-6 md:h-8">
+                <div id="fighter2Health" class="health-bar"></div>
+            </div>
+            <p id="fighter2Punches" class="text-sm md:text-base mt-2 hud-element text-right">Punches: 0</p>
+        </div>
+    </div>
+
+    <!-- Post-Match UI -->
+    <div id="postMatchScreen" class="absolute inset-0 z-10 hidden flex-col items-center justify-center bg-black bg-opacity-70 text-center">
+        <p id="matchEndMethod" class="text-2xl md:text-3xl mb-8 hud-element text-yellow-400"></p>
+        <h2 id="winnerAnnouncement" class="text-4xl md:text-6xl mb-4 hud-element">WINNER!</h2>
+        <p id="winnerRecord" class="text-xl md:text-2xl mb-10 hud-element">New Record: 1-0</p>
+        <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-8">
+            <button id="nextFightButton" class="menu-button clickable">Next Fight?</button>
+            <button id="rematchButton" class="menu-button clickable">Rematch</button>
+        </div>
+    </div>
+
+
+    <script>
+        // --- Canvas and Context Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        // --- FIX FOR PIXEL ART BLUR ---
+        ctx.imageSmoothingEnabled = false;
+
+        // --- UI Elements ---
+        const mainMenu = document.getElementById('mainMenu');
+        const versusScreen = document.getElementById('versusScreen');
+        const inGameHud = document.getElementById('inGameHud');
+        const postMatchScreen = document.getElementById('postMatchScreen');
+        const startButton = document.getElementById('startButton');
+        const quitButton = document.getElementById('quitButton');
+        const nextFightButton = document.getElementById('nextFightButton');
+        const rematchButton = document.getElementById('rematchButton');
+
+        // --- Game State ---
+        let gameState = 'MAIN_MENU'; // MAIN_MENU, VERSUS_SCREEN, FIGHTING, FIGHT_OVER
+        let gameTimer = 120; // 2 minutes
+        let lastTime = 0;
+        let particles = [];
+        
+        // --- Audio ---
+        let audioCtx;
+        const audioBuffers = {};
+        let ambientSourceNode = null;
+        let cheerSoundNode = null;
+
+        // --- Asset Management ---
+        const toRawURL = url => url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+
+        const assets = {
+            boxingRing: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/BoxingRing.png'), img: null },
+            boxers: {
+                rightFacing: [
+                    { idle: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/BoxerIdle.png'), img: null }, punch: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/BoxerPunching.png'), img: null }, ko: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer1KO.png'), img: null } },
+                    { idle: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer4Idle.png'), img: null }, punch: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer4Punching.png'), img: null }, ko: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer4Ko.png'), img: null } }
+                ],
+                leftFacing: [
+                    { idle: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer2Idle.png'), img: null }, punch: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer2Punching.png'), img: null }, ko: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer2Ko.png'), img: null } },
+                    { idle: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer3Idle.png'), img: null }, punch: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer3Punching.png'), img: null }, ko: { src: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Boxer3KO.png'), img: null } }
+                ]
+            },
+            audio: {
+                ambient: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Football%20%20Sport%20Crowd%20Sound%20Effect%20(no%20copyright)%20FX.mp3'),
+                cheer: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Sports%20Stadium%20Crowd%20Cheering%20Sound%20Effect.mp3'),
+                punch: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Punch%20-%20Sound%20Effect%20(HD).mp3'),
+                hurt: toRawURL('https://github.com/slyraingames/BoxingBettingSim/blob/main/Male%20Grunt%20Sound%20Effect%20%5BHD%5D-Audio.mp3')
+            }
+        };
+
+        // --- Name Generation ---
+        const firstNames = ["Liam", "Noah", "Oliver", "James", "Elijah", "William", "Henry", "Lucas", "Benjamin", "Theodore", "Owen", "Levi", "Sebastian", "Mateo", "Jack", "Michael", "Daniel", "Alexander", "Aiden", "Samuel", "Joseph", "John", "David", "Wyatt", "Luke", "Julian", "Leo", "Grayson", "Isaac", "Jayden", "Gabriel", "Anthony", "Lincoln", "Joshua", "Christopher", "Andrew", "Caleb", "Ryan", "Asher", "Nathan", "Thomas", "Charles", "Eli", "Christian", "Hudson", "Connor", "Ezra", "Aaron", "Landon", "Adrian", "Jonathan", "Nolan", "Jeremiah", "Easton", "Elias", "Colton", "Cameron", "Carson", "Robert", "Angel", "Maverick", "Nicholas", "Dominic", "Jaxson", "Greyson", "Adam", "Ian", "Austin", "Santiago", "Jordan", "Cooper", "Brayden", "Roman", "Evan", "Ezekiel", "Jose", "Jace", "Kai", "Kevin", "Leonardo", "Blake", "George", "Cole", "Weston", "Axel", "Jaxon", "Josiah", "Diego", "Abel", "Graham", "Zion", "Carter", "Luis", "Isaiah", "Ali", "Richard", "Patrick", "Kingston", "Matthew", "Eric", "Jason", "Jesus", "Paul", "Omar", "Timothy", "Miguel", "Vincent", "Miles", "Harrison", "August", "Edward", "Peter", "Frederick", "Arthur", "Victor", "Joel", "Raymond", "Alan", "Marcus", "Wilson", "Dennis", "Roger"];
+        const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores", "Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell", "Carter", "Roberts", "Gomez", "Phillips", "Evans", "Turner", "Diaz", "Parker", "Cruz", "Edwards", "Collins", "Reyes", "Stewart", "Morris", "Morales", "Murphy", "Cook", "Rogers", "Gutierrez", "Ortiz", "Morgan", "Cooper", "Peterson", "Bailey", "Reed", "Kelly", "Howard", "Ramos", "Kim", "Cox", "Ward", "Richardson", "Watson", "Brooks", "Chavez", "Wood", "James", "Bennett", "Gray", "Mendoza", "Ruiz", "Hughes", "Price", "Alvarez", "Castillo", "Sanders", "Patel", "Myers", "Long", "Ross", "Foster", "Jimenez", "Powell", "Jenkins", "Perry", "Russell", "Sullivan", "Bell", "Coleman", "Butler", "Henderson", "Barnes", "Gonzales", "Fisher", "Vasquez", "Simmons", "Romero", "Jordan", "Patterson", "Alexander", "Hamilton", "Graham", "Wallace", "Griffin", "West", "Cole", "Hayes", "Bryant", "Herrera", "Gibson", "Ellis", "Tran", "Medina", "Aguilar", "Stevens", "Murray", "Ford", "Castro", "Marshall", "Owen", "Harrison", "Fernandez", "Mcdonald", "Woods", "Washington", "Kennedy", "Wells", "Webb", "Olson", "Wagner", "Hunter", "Snyder", "Crawford", "Mason", "Boyd", "Shaw", "Gordon", "Burns", "Warren", "Dixon", "Freeman", "Holmes", "Rice", "Robertson", "Hunt", "Black", "Daniels", "Palmer", "Mills", "Nichols", "Grant", "Knight", "Ferguson", "Rose", "Stone", "Hawkins", "Dunn", "Perkins", "Hudson", "Spencer", "Gardner", "Stephens", "Payne", "Pierce", "Berry", "Matthews", "Arnold", "Larson", "Carlson"];
+
+        // --- Fighter Objects ---
+        let fighter1 = {};
+        let fighter2 = {};
+        let lastFighter1Data = {};
+        let lastFighter2Data = {};
+
+        // --- Game Setup Functions ---
+
+        function createFighter(facing) {
+            const isRightFacing = facing === 'right';
+            const boxerPool = isRightFacing ? assets.boxers.rightFacing : assets.boxers.leftFacing;
+            const boxerIndex = Math.floor(Math.random() * boxerPool.length);
+            const boxerAsset = boxerPool[boxerIndex];
+
+            const maxHP = 175; // All fighters have the same health
+            const maxStamina = Math.floor(Math.random() * 51) + 100; // 100-150
+
+            return {
+                asset: boxerAsset, index: boxerIndex, facing: facing,
+                name: `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`,
+                record: { wins: Math.random() > 0.1 ? Math.floor(Math.random() * 30) : 0, losses: Math.random() > 0.1 ? Math.floor(Math.random() * 10) : 0, },
+                stats: { attack: Math.floor(Math.random() * 6) + 10, defense: Math.floor(Math.random() * 6) + 5, speed: (Math.random() * 0.4) + 0.5, },
+                maxHp: maxHP, hp: maxHP, maxStamina: maxStamina, stamina: maxStamina, punchesLanded: 0, state: 'idle', animFrame: 0, animTimer: 0, attackCooldown: 0, x: 0, y: 0,
+            };
+        }
+
+        function setupFight(isRematch = false) {
+            if (isRematch) {
+                fighter1 = JSON.parse(JSON.stringify(lastFighter1Data));
+                fighter2 = JSON.parse(JSON.stringify(lastFighter2Data));
+                fighter1.asset = assets.boxers.rightFacing[fighter1.index];
+                fighter2.asset = assets.boxers.leftFacing[fighter2.index];
+            } else {
+                fighter1 = createFighter('right');
+                fighter2 = createFighter('left');
+                lastFighter1Data = JSON.parse(JSON.stringify(fighter1));
+                lastFighter2Data = JSON.parse(JSON.stringify(fighter2));
+            }
+
+            fighter1.hp = fighter1.maxHp; fighter1.stamina = fighter1.maxStamina; fighter1.punchesLanded = 0; fighter1.state = 'idle'; fighter1.animFrame = 0; fighter1.animTimer = 0;
+            fighter2.hp = fighter2.maxHp; fighter2.stamina = fighter2.maxStamina; fighter2.punchesLanded = 0; fighter2.state = 'idle'; fighter2.animFrame = 0; fighter2.animTimer = 0;
+
+            gameTimer = 120;
+            particles = [];
+            updateUI();
+            resizeCanvas();
+        }
+
+        function updateUI() {
+            document.getElementById('fighter1Name').textContent = fighter1.name;
+            document.getElementById('fighter1Record').textContent = `(${fighter1.record.wins}-${fighter1.record.losses})`;
+            document.getElementById('fighter2Name').textContent = fighter2.name;
+            document.getElementById('fighter2Record').textContent = `(${fighter2.record.wins}-${fighter2.record.losses})`;
+            
+            const f1HealthEl = document.getElementById('fighter1Health');
+            const f1HealthPercent = (fighter1.hp / fighter1.maxHp) * 100;
+            f1HealthEl.style.width = `${f1HealthPercent}%`;
+            updateHealthBarColor(f1HealthEl, f1HealthPercent);
+            
+            const f2HealthEl = document.getElementById('fighter2Health');
+            const f2HealthPercent = (fighter2.hp / fighter2.maxHp) * 100;
+            f2HealthEl.style.width = `${f2HealthPercent}%`;
+            updateHealthBarColor(f2HealthEl, f2HealthPercent);
+
+            document.getElementById('fighter1Punches').textContent = `Punches: ${fighter1.punchesLanded}`;
+            document.getElementById('fighter2Punches').textContent = `Punches: ${fighter2.punchesLanded}`;
+            
+            const minutes = Math.floor(gameTimer / 60);
+            const seconds = Math.floor(gameTimer % 60);
+            document.getElementById('timer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        function updateHealthBarColor(element, percent) {
+            element.classList.remove('low', 'critical');
+            if (percent < 25) { element.classList.add('critical'); } else if (percent < 50) { element.classList.add('low'); }
+        }
+
+        // --- Game Loop ---
+        function gameLoop(timestamp) {
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            update(deltaTime);
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(dt) {
+            if (gameState !== 'FIGHTING') return;
+
+            gameTimer -= dt;
+            if (gameTimer < 0) { gameTimer = 0; endFightByDecision(); return; }
+
+            updateFighter(fighter1, fighter2, dt);
+            updateFighter(fighter2, fighter1, dt);
+
+            particles.forEach((p, index) => {
+                p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt; p.life -= dt;
+                if (p.life <= 0) { particles.splice(index, 1); }
+            });
+
+            updateUI();
+        }
+        
+        function updateFighter(attacker, defender, dt) {
+            if (attacker.state === 'ko') return;
+            
+            attacker.stamina = Math.min(attacker.maxStamina, attacker.stamina + 15 * dt);
+
+            attacker.animTimer += dt;
+            if (attacker.animTimer > 0.15) { attacker.animTimer = 0; attacker.animFrame = (attacker.animFrame + 1) % 3; }
+
+            attacker.attackCooldown -= dt;
+            if (attacker.attackCooldown <= 0) {
+                if (attacker.state === 'punching') { attacker.state = 'idle'; }
+                
+                if (attacker.stamina >= 30) {
+                    attacker.state = 'punching'; attacker.stamina -= 30; attacker.attackCooldown = 1 / attacker.stats.speed; attacker.animFrame = 0;
+                    
+                    if (Math.random() < 0.3) return; // 70% land chance
+
+                    if (Math.random() < 1 / 600) {
+                        defender.hp = 0; createBloodParticles(defender, 50); endFightByKO(attacker, defender); return;
+                    }
+
+                    const damage = Math.max(2, attacker.stats.attack - defender.stats.defense);
+                    defender.hp -= damage;
+                    attacker.punchesLanded++;
+                    createBloodParticles(defender, 15);
+
+                    if (Math.random() < 0.4) playSound(audioBuffers.punch, { volume: 0.18 });
+                    if (Math.random() < 0.15) {
+                        const pitch = 0.9 + Math.random() * 0.2;
+                        playSound(audioBuffers.hurt, { volume: 0.16, pitch: pitch });
+                    }
+
+                    if (defender.hp <= 0) { defender.hp = 0; endFightByKO(attacker, defender); }
+                }
+            }
+        }
+
+        function endFightByKO(winner, loser) {
+            if (gameState !== 'FIGHTING') return;
+            loser.state = 'ko'; winner.record.wins++; loser.record.losses++; gameState = 'FIGHT_OVER';
+            showPostMatchScreen(winner, 'by KNOCKOUT!');
+        }
+
+        function endFightByDecision() {
+            if (gameState !== 'FIGHTING') return;
+            gameState = 'FIGHT_OVER';
+            let winner;
+            if (fighter1.punchesLanded > fighter2.punchesLanded) { winner = fighter1; fighter2.record.losses++; } 
+            else if (fighter2.punchesLanded > fighter1.punchesLanded) { winner = fighter2; fighter1.record.losses++; } 
+            else { showPostMatchScreen(null, "by JUDGES' DECISION!"); return; }
+            winner.record.wins++;
+            showPostMatchScreen(winner, "by JUDGES' DECISION!");
+        }
+        
+        function showPostMatchScreen(winner, method) {
+            stopAmbientSound();
+            cheerSoundNode = playSound(audioBuffers.cheer, { volume: 0.15 });
+            inGameHud.classList.add('hidden');
+            postMatchScreen.style.display = 'flex';
+            document.getElementById('matchEndMethod').textContent = method;
+
+            if (winner) {
+                document.getElementById('winnerAnnouncement').textContent = `${winner.name} Wins!`;
+                document.getElementById('winnerRecord').textContent = `New Record: ${winner.record.wins}-${winner.record.losses}`;
+            } else {
+                document.getElementById('winnerAnnouncement').textContent = "It's a Draw!";
+                document.getElementById('winnerRecord').textContent = `No winner decided.`;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (assets.boxingRing.img) {
+                const img = assets.boxingRing.img;
+                const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+                const w = img.width * scale; const h = img.height * scale;
+                const x = (canvas.width / 2) - (w / 2); const y = (canvas.height / 2) - (h / 2);
+                ctx.drawImage(img, x, y, w, h);
+            }
+
+            if (fighter1.asset) drawFighter(fighter1);
+            if (fighter2.asset) drawFighter(fighter2);
+            
+            particles.forEach(p => { ctx.fillStyle = `rgba(255, 0, 0, ${p.life})`; ctx.fillRect(p.x, p.y, p.size, p.size); });
+        }
+        
+        function drawFighter(fighter) {
+            let spriteSheet, isSingleFrame = false;
+            switch (fighter.state) {
+                case 'ko': spriteSheet = fighter.asset.ko.img; isSingleFrame = true; break;
+                case 'punching': spriteSheet = fighter.asset.punch.img; break;
+                case 'idle': default: spriteSheet = fighter.asset.idle.img; break;
+            }
+            if (!spriteSheet) return;
+            const frameWidth = 48, frameHeight = 48;
+            const scale = Math.min(canvas.width, canvas.height) / 150;
+            const sx = isSingleFrame ? 0 : fighter.animFrame * frameWidth;
+            ctx.drawImage(spriteSheet, sx, 0, frameWidth, frameHeight, fighter.x, fighter.y, frameWidth * scale, frameHeight * scale);
+        }
+
+        function createBloodParticles(target, count) {
+            for (let i = 0; i < count; i++) {
+                const scale = Math.min(canvas.width, canvas.height) / 150;
+                const particleX = target.x + (24 * scale); const particleY = target.y + (16 * scale);
+                particles.push({
+                    x: particleX, y: particleY,
+                    vx: (Math.random() - 0.5) * 200 * (target.facing === 'left' ? -1 : 1),
+                    vy: (Math.random() - 0.7) * 200,
+                    life: Math.random() * 0.5 + 0.3, size: Math.random() * 3 + 1,
+                });
+            }
+        }
+        
+        // --- Audio Functions ---
+        function playSound(buffer, options = {}) {
+            if (!audioCtx || !buffer) return null;
+            const source = audioCtx.createBufferSource();
+            const gainNode = audioCtx.createGain();
+            source.buffer = buffer;
+            source.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            gainNode.gain.setValueAtTime(options.volume || 1, audioCtx.currentTime);
+            source.loop = options.loop || false;
+            source.playbackRate.value = options.pitch || 1;
+            source.start(0);
+            return { source, gainNode };
+        }
+
+        function fadeOutSound(soundNode, duration) {
+            if (!soundNode || !soundNode.gainNode) return;
+            const gain = soundNode.gainNode.gain;
+            gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+            setTimeout(() => { soundNode.source.stop(); }, duration * 1000);
+        }
+
+        function startAmbientSound() {
+            stopAmbientSound();
+            ambientSourceNode = playSound(audioBuffers.ambient, { volume: 0.3, loop: true });
+        }
+
+        function stopAmbientSound() {
+            if (ambientSourceNode) {
+                ambientSourceNode.source.stop();
+                ambientSourceNode = null;
+            }
+        }
+
+        // --- Event Listeners & Initialization ---
+        function resizeCanvas() {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            if (fighter1.asset && fighter2.asset) {
+                const scale = Math.min(canvas.width, canvas.height) / 150;
+                const spriteWidth = 48 * scale;
+                const ringCenterY = canvas.height / 2;
+                fighter1.x = canvas.width / 2 - spriteWidth * 1.1; fighter1.y = ringCenterY - (48 * scale) / 2;
+                fighter2.x = canvas.width / 2 + spriteWidth * 0.1; fighter2.y = ringCenterY - (48 * scale) / 2;
+            }
+            draw();
+        }
+        
+        function transitionToVersusScreen(isRematch = false) {
+            setupFight(isRematch);
+            document.getElementById('versusText').textContent = `${fighter1.name} vs ${fighter2.name}`;
+            versusScreen.style.display = 'flex';
+            gameState = 'VERSUS_SCREEN';
+        }
+
+        startButton.addEventListener('click', () => {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            mainMenu.classList.add('hidden');
+            transitionToVersusScreen(false);
+        });
+
+        versusScreen.addEventListener('click', () => {
+            if (gameState !== 'VERSUS_SCREEN') return;
+            versusScreen.style.display = 'none';
+            inGameHud.classList.remove('hidden');
+            startAmbientSound();
+            gameState = 'FIGHTING';
+        });
+
+        quitButton.addEventListener('click', () => { mainMenu.querySelector('h1').textContent = "SEE YOU NEXT TIME!"; });
+        
+        nextFightButton.addEventListener('click', () => {
+             fadeOutSound(cheerSoundNode, 8);
+             postMatchScreen.style.display = 'none';
+             transitionToVersusScreen(false);
+        });
+        rematchButton.addEventListener('click', () => {
+             fadeOutSound(cheerSoundNode, 8);
+             postMatchScreen.style.display = 'none';
+             transitionToVersusScreen(true);
+        });
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- Asset Loading ---
+        async function loadAudioData() {
+            if (!audioCtx) {
+                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            for (const key in assets.audio) {
+                try {
+                    const response = await fetch(assets.audio[key]);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    audioBuffers[key] = audioBuffer;
+                } catch (error) {
+                    console.error(`Failed to load audio ${key}:`, error);
+                }
+            }
+        }
+
+        function loadImages(callback) {
+            let loadedCount = 0; const assetsToLoad = [];
+            assetsToLoad.push(assets.boxingRing);
+            assets.boxers.rightFacing.forEach(b => { assetsToLoad.push(b.idle, b.punch, b.ko); });
+            assets.boxers.leftFacing.forEach(b => { assetsToLoad.push(b.idle, b.punch, b.ko); });
+            const totalAssets = assetsToLoad.length;
+            if (totalAssets === 0) { callback(); return; }
+
+            assetsToLoad.forEach(asset => {
+                asset.img = new Image(); asset.img.src = asset.src;
+                asset.img.onload = () => { loadedCount++; if (loadedCount === totalAssets) { callback(); } };
+                asset.img.onerror = () => { console.error(`Failed to load asset: ${asset.src}`); loadedCount++; if (loadedCount === totalAssets) { callback(); } }
+            });
+        }
+
+        async function initializeGame() {
+            mainMenu.querySelector('h1').textContent = "LOADING...";
+            await loadAudioData();
+            loadImages(() => {
+                mainMenu.querySelector('h1').textContent = "Virtual Boxing Simulator";
+                console.log("All assets loaded.");
+                resizeCanvas();
+                requestAnimationFrame(gameLoop);
+            });
+        }
+
+        initializeGame();
+
+    </script>
+</body>
+</html>
